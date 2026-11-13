@@ -1,0 +1,12 @@
+# Compiled Java class files
+*.class
+
+# Generated e-ticket text files
+Ticket_*.txt
+
+# IDE & OS files
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
