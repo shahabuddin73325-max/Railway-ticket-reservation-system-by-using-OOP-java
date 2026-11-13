@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Railway Ticket Reservation System</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f4f6f9; margin: 0; padding: 15px; }
+        .container { max-width: 900px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #1a3e72; text-align: center; margin-top: 0; font-size: 24px; }
+        h3 { color: #333; border-bottom: 2px solid #1a3e72; padding-bottom: 6px; margin-top: 25px; }
+        .row { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; }
+        input, select, button { padding: 10px; border: 1px solid #ccc; border-radius: 5px; font-size: 14px; }
+        input, select { flex: 1; min-width: 180px; }
+        button { background: #1a3e72; color: white; border: none; cursor: pointer; font-weight: bold; padding: 10px 18px; }
+        button:hover { background: #122b52; }
+        .table-wrap { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; min-width: 500px; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: center; font-size: 14px; }
+        th { background: #1a3e72; color: white; }
+        .alert { padding: 12px; border-radius: 5px; margin-top: 10px; display: none; font-weight: bold; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        ul { background: #f9f9f9; padding: 15px 25px; border-radius: 5px; }
+        li { margin-bottom: 8px; font-family: monospace; font-size: 13px; word-break: break-word; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>🚆 Railway Ticket Reservation System</h1>
+
+    <!-- Search Section -->
+    <h3>1. Search & Available Trains</h3>
+    <div class="row">
+        <input type="text" id="src" placeholder="From Station (e.g. Hyderabad)">
+        <input type="text" id="dest" placeholder="To Station (e.g. New Delhi)">
+        <button onclick="loadTrains()">Search Trains</button>
+        <button onclick="resetSearch()" style="background:#6c757d;">Show All</button>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Train No</th>
+                    <th>Train Name</th>
+                    <th>Source</th>
+                    <th>Destination</th>
+                    <th>Distance (km)</th>
+                    <th>Available Seats</th>
+                </tr>
+            </thead>
+            <tbody id="trainTable"></tbody>
+        </table>
+    </div>
+
+    <!-- Booking Section -->
+    <h3>2. Book a Ticket</h3>
+    <div class="row">
+        <input type="number" id="trainNo" placeholder="Train No (e.g. 12723)" required>
+        <input type="text" id="passenger" placeholder="Passenger Name" required>
+        <select id="coach">
+            <option value="Sleeper">Sleeper Class (Rs. 0.8/km)</option>
+            <option value="AC">AC Class (Rs. 2.0/km + Rs. 150)</option>
+        </select>
+        <input type="number" id="seats" placeholder="No. of Seats" min="1" max="6" value="1">
+        <button onclick="bookTicket()">Confirm Booking</button>
+    </div>
+    <div id="msgBox" class="alert"></div>
+
+    <!-- Booking History Section -->
+    <h3>3. Generated Tickets (Saved to File & DB)</h3>
+    <ul id="bookingList"><li>No bookings yet.</li></ul>
+</div>
+
+<script>
+    // Fallback data so Vercel deployment works without a live Java server
+    let pnrCounter = 100001;
+    const localTrains = [
+        { trainNo: 12723, name: "Telangana Express", source: "Hyderabad", dest: "New Delhi", seats: 50, distance: 1670 },
+        { trainNo: 12759, name: "Charminar Express", source: "Chennai", dest: "Hyderabad", seats: 40, distance: 790 },
+        { trainNo: 12704, name: "Falaknuma Express", source: "Secunderabad", dest: "Howrah", seats: 30, distance: 1545 }
+    ];
+    const localBookings = [];
+
+    async function loadTrains() {
+        const src = document.getElementById('src').value.trim();
+        const dest = document.getElementById('dest').value.trim();
+        let trains = [];
+
+        try {
+            const res = await fetch(`/trains?source=${encodeURIComponent(src)}&dest=${encodeURIComponent(dest)}`);
+            if (!res.ok) throw new Error("Vercel Static Mode");
+            trains = await res.json();
+        } catch (err) {
+            // Runs automatically on Vercel
+            trains = localTrains.filter(t =>
+                (!src || t.source.toLowerCase().includes(src.toLowerCase())) &&
+                (!dest || t.dest.toLowerCase().includes(dest.toLowerCase()))
+            );
+        }
+
+        const tbody = document.getElementById('trainTable');
+        tbody.innerHTML = trains.map(t => `
+            <tr>
+                <td><b>${t.trainNo}</b></td>
+                <td>${t.name}</td>
+                <td>${t.source}</td>
+                <td>${t.dest}</td>
+                <td>${t.distance}</td>
+                <td><b>${t.seats}</b></td>
+            </tr>
+        `).join('');
+    }
+
+    function resetSearch() {
+        document.getElementById('src').value = '';
+        document.getElementById('dest').value = '';
+        loadTrains();
+    }
+
+    async function bookTicket() {
+        const trainNo = parseInt(document.getElementById('trainNo').value);
+        const passenger = document.getElementById('passenger').value.trim();
+        const coach = document.getElementById('coach').value;
+        const seats = parseInt(document.getElementById('seats').value);
+
+        if (!trainNo || !passenger || !seats || seats <= 0) {
+            showMsg("Please fill in all booking fields!", "error");
+            return;
+        }
+
+        try {
+            const res = await fetch(`/book?trainNo=${trainNo}&passenger=${encodeURIComponent(passenger)}&coach=${coach}&seats=${seats}`);
+            if (!res.ok) throw new Error("Vercel Static Mode");
+            const data = await res.json();
+            showMsg(data.message, data.status);
+        } catch (err) {
+            // Runs automatically on Vercel
+            const train = localTrains.find(t => t.trainNo === trainNo);
+            if (!train || train.seats < seats) {
+                showMsg("Not enough seats available on Train " + trainNo, "error");
+                return;
+            }
+            const fare = coach === "AC" ? (train.distance * 2.0 * seats) + 150 : (train.distance * 0.8 * seats);
+            const pnr = pnrCounter++;
+            train.seats -= seats;
+
+            const record = `PNR: ${pnr} | ${passenger} | Train: ${train.name} (${coach}) | Seats: ${seats} | Fare: Rs.${fare.toFixed(1)}`;
+            localBookings.push(record);
+            showMsg(record, "success");
+
+            // Auto-download Ticket_<PNR>.txt file on phone/PC
+            const blob = new Blob(["=== RAILWAY E-TICKET ===\n" + record], { type: "text/plain" });
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = `Ticket_${pnr}.txt`;
+            a.click();
+        }
+
+        loadTrains();
+        loadBookings();
+    }
+
+    async function loadBookings() {
+        let list = [];
+        try {
+            const res = await fetch('/bookings');
+            if (!res.ok) throw new Error("Vercel Static Mode");
+            list = await res.json();
+        } catch (err) {
+            list = localBookings;
+        }
+
+        const ul = document.getElementById('bookingList');
+        if (list.length > 0) {
+            ul.innerHTML = list.map(item => `<li>${item}</li>`).join('');
+        }
+    }
+
+    function showMsg(text, type) {
+        const box = document.getElementById('msgBox');
+        box.style.display = 'block';
+        box.className = 'alert ' + (type === 'success' ? 'success' : 'error');
+        box.innerText = text;
+    }
+
+    loadTrains();
+    loadBookings();
+</script>
+</body>
+</html>
